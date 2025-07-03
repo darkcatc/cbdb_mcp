@@ -4,7 +4,7 @@
 
 A Model Context Protocol (MCP) server for secure and efficient access to Cloudberry Database, designed for AI applications.
 
-arch01.png
+![alt text](arch01.png)
 
 ## 📁 Project Structure
 
