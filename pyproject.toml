@@ -11,8 +11,10 @@ dependencies = [
     "pydantic-settings",
     "structlog",
     "cryptography",
+    "requests",
+    "python-dotenv",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 
 [project.scripts]
 cloudberry-mcp = "src.server:main"

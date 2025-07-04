@@ -165,7 +165,7 @@ class DatabaseOperations:
                 query = """
                 SELECT schemaname, tablename, tableowner, hasindexes, hasrules, hastriggers 
                 FROM pg_tables 
-                WHERE schemaname = %s
+                WHERE schemaname = %(schema)s
                 ORDER BY tablename
                 """
                 params = {"schema": schema}
@@ -203,7 +203,7 @@ class DatabaseOperations:
             # Build table reference
             if schema:
                 full_table_name = f'"{schema}"."{table_name}"'
-                schema_condition = "AND table_schema = %s"
+                schema_condition = "AND table_schema = %(schema)s"
                 params = {"table_name": table_name, "schema": schema}
             else:
                 full_table_name = f'"{table_name}"'

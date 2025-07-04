@@ -20,9 +20,10 @@ def setup_logging(level: str = "INFO", format_type: str = "json") -> None:
         format_type: Log format ('json' or 'text')
     """
     # Configure standard library logging
+    # IMPORTANT: Use stderr for MCP compatibility (stdout is used for protocol communication)
     logging.basicConfig(
         format="%(message)s",
-        stream=sys.stdout,
+        stream=sys.stderr,
         level=getattr(logging, level.upper()),
     )
     
