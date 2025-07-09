@@ -181,4 +181,7 @@ config.yml
 
 # MCP specific
 mcp_logs/
-*.mcp.log 
+*.mcp.log
+
+# Windsurf
+.windsurf/
