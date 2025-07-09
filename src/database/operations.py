@@ -7,6 +7,8 @@ Provides safe SQL execution and database query capabilities.
 
 import re
 import time
+import asyncio
+import functools
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from src.database.connection import get_connection_manager
@@ -58,14 +60,14 @@ class DatabaseOperations:
         
         return True, "Query is safe"
 
-    def execute_query(
+    async def execute_query(
         self, 
         query: str, 
         params: Optional[Dict[str, Any]] = None,
         limit: Optional[int] = 1000
     ) -> Dict[str, Any]:
         """
-        Execute a safe SELECT query.
+        Execute a safe SELECT query asynchronously.
         
         Args:
             query: SQL query to execute
@@ -76,9 +78,10 @@ class DatabaseOperations:
             Dictionary with query results and metadata
         """
         start_time = time.time()
+        loop = asyncio.get_event_loop()
         
         try:
-            # Safety check
+            # Safety check (can be synchronous)
             is_safe, reason = self._is_safe_query(query)
             if not is_safe:
                 raise ValueError(f"Unsafe query rejected: {reason}")
@@ -89,45 +92,50 @@ class DatabaseOperations:
             
             conn_manager = get_connection_manager()
             
-            with conn_manager.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    if params:
-                        cursor.execute(query, params)
-                    else:
-                        cursor.execute(query)
-                    
-                    # Get column names
-                    columns = [desc[0] for desc in cursor.description] if cursor.description else []
-                    
-                    # Fetch results
-                    rows = cursor.fetchall()
-                    
-                    # Convert to list of dictionaries
-                    results = []
-                    for row in rows:
-                        if hasattr(row, 'keys'):  # RealDictRow
-                            results.append(dict(row))
-                        else:  # Regular tuple
-                            results.append(dict(zip(columns, row)))
-                    
-                    duration = time.time() - start_time
-                    
-                    log_data = log_database_operation(
-                        operation="execute_query",
-                        query=query[:200] + "..." if len(query) > 200 else query,
-                        params=params,
-                        duration=duration,
-                    )
-                    self.logger.info("Query executed successfully", **log_data)
-                    
-                    return {
-                        "success": True,
-                        "data": results,
-                        "columns": columns,
-                        "row_count": len(results),
-                        "duration": duration,
-                        "query": query
-                    }
+            # Execute blocking database operations in a thread pool
+            def _blocking_db_call():
+                with conn_manager.get_connection() as conn:
+                    with conn.cursor() as cursor:
+                        if params:
+                            cursor.execute(query, params)
+                        else:
+                            cursor.execute(query)
+                        
+                        # Get column names
+                        columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                        
+                        # Fetch results
+                        rows = cursor.fetchall()
+                        
+                        # Convert to list of dictionaries
+                        results = []
+                        for row in rows:
+                            if hasattr(row, 'keys'):  # RealDictRow
+                                results.append(dict(row))
+                            else:  # Regular tuple
+                                results.append(dict(zip(columns, row)))
+                        return columns, results
+            
+            columns, results = await loop.run_in_executor(None, _blocking_db_call)
+            
+            duration = time.time() - start_time
+            
+            log_data = log_database_operation(
+                operation="execute_query",
+                query=query[:200] + "..." if len(query) > 200 else query,
+                params=params,
+                duration=duration,
+            )
+            self.logger.info("Query executed successfully", **log_data)
+            
+            return {
+                "success": True,
+                "data": results,
+                "columns": columns,
+                "row_count": len(results),
+                "duration": duration,
+                "query": query
+            }
                     
         except Exception as e:
             duration = time.time() - start_time
@@ -150,9 +158,9 @@ class DatabaseOperations:
                 "query": query
             }
 
-    def list_tables(self, schema: Optional[str] = None) -> Dict[str, Any]:
+    async def list_tables(self, schema: Optional[str] = None) -> Dict[str, Any]:
         """
-        List tables in the database.
+        List tables in the database asynchronously.
         
         Args:
             schema: Schema name (optional)
@@ -178,7 +186,7 @@ class DatabaseOperations:
                 """
                 params = None
             
-            return self.execute_query(query, params)
+            return await self.execute_query(query, params)
             
         except Exception as e:
             self.logger.error("Failed to list tables", error=str(e))
@@ -188,9 +196,9 @@ class DatabaseOperations:
                 "error_type": type(e).__name__
             }
 
-    def describe_table(self, table_name: str, schema: Optional[str] = None) -> Dict[str, Any]:
+    async def describe_table(self, table_name: str, schema: Optional[str] = None) -> Dict[str, Any]:
         """
-        Describe table structure.
+        Describe table structure asynchronously.
         
         Args:
             table_name: Name of the table
@@ -226,7 +234,7 @@ class DatabaseOperations:
             ORDER BY ordinal_position
             """
             
-            return self.execute_query(query, params)
+            return await self.execute_query(query, params)
             
         except Exception as e:
             self.logger.error("Failed to describe table", error=str(e), table=table_name, schema=schema)
@@ -236,9 +244,9 @@ class DatabaseOperations:
                 "error_type": type(e).__name__
             }
 
-    def list_schemas(self) -> Dict[str, Any]:
+    async def list_schemas(self) -> Dict[str, Any]:
         """
-        List available schemas.
+        List available schemas asynchronously.
         
         Returns:
             Dictionary with schema list
@@ -251,7 +259,7 @@ class DatabaseOperations:
             ORDER BY schema_name
             """
             
-            return self.execute_query(query)
+            return await self.execute_query(query)
             
         except Exception as e:
             self.logger.error("Failed to list schemas", error=str(e))
@@ -261,9 +269,9 @@ class DatabaseOperations:
                 "error_type": type(e).__name__
             }
 
-    def get_database_stats(self) -> Dict[str, Any]:
+    async def get_database_stats(self) -> Dict[str, Any]:
         """
-        Get database statistics.
+        Get database statistics asynchronously.
         
         Returns:
             Dictionary with database statistics
@@ -278,7 +286,7 @@ class DatabaseOperations:
                 (SELECT count(*) FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast', 'gp_toolkit')) as schema_count
             """
             
-            return self.execute_query(query)
+            return await self.execute_query(query)
             
         except Exception as e:
             self.logger.error("Failed to get database stats", error=str(e))
@@ -288,14 +296,14 @@ class DatabaseOperations:
                 "error_type": type(e).__name__
             }
 
-    def preview_table(
+    async def preview_table(
         self, 
         table_name: str, 
         schema: Optional[str] = None, 
         limit: int = 10
     ) -> Dict[str, Any]:
         """
-        Preview table data.
+        Preview table data asynchronously.
         
         Args:
             table_name: Name of the table
@@ -314,7 +322,7 @@ class DatabaseOperations:
             
             query = f"SELECT * FROM {full_table_name} LIMIT {limit}"
             
-            return self.execute_query(query, limit=limit)
+            return await self.execute_query(query, limit=limit)
             
         except Exception as e:
             self.logger.error("Failed to preview table", error=str(e), table=table_name, schema=schema)

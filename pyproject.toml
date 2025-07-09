@@ -6,6 +6,8 @@ authors = [
     { name = "Vance Chen", email = "vance@example.com" }
 ]
 dependencies = [
+    "fastapi",
+    "uvicorn",
     "mcp",
     "psycopg2-binary",
     "pydantic-settings",
